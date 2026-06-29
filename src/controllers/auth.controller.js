@@ -1,22 +1,80 @@
 const httpStatus = require('http-status');
 const catchAsync = require('../utils/catchAsync');
-const { authService, userService, tokenService, emailService } = require('../services');
+const { authService, userService, tokenService, emailService, auditLogService } = require('../services');
 
 const register = catchAsync(async (req, res) => {
-  const user = await userService.createUser(req.body);
-  const tokens = await tokenService.generateAuthTokens(user);
-  res.status(httpStatus.CREATED).send({ user, tokens });
+  try {
+    const user = await userService.createUser(req.body);
+    const tokens = await tokenService.generateAuthTokens(user);
+    await auditLogService.createAuditLog({
+      action: 'REGISTER_SUCCESS',
+      user: user._id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      status: 'SUCCESS',
+      details: { email: user.email },
+    });
+    res.status(httpStatus.CREATED).send({ user, tokens });
+  } catch (error) {
+    await auditLogService.createAuditLog({
+      action: 'REGISTER_FAILED',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      status: 'FAILED',
+      details: { email: req.body.email, error: error.message },
+    });
+    throw error;
+  }
 });
 
 const login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
-  const user = await authService.loginUserWithEmailAndPassword(email, password);
-  const tokens = await tokenService.generateAuthTokens(user);
-  res.send({ user, tokens });
+  try {
+    const user = await authService.loginUserWithEmailAndPassword(email, password);
+    const tokens = await tokenService.generateAuthTokens(user);
+    await auditLogService.createAuditLog({
+      action: 'LOGIN_SUCCESS',
+      user: user._id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      status: 'SUCCESS',
+      details: { email },
+    });
+    res.send({ user, tokens });
+  } catch (error) {
+    await auditLogService.createAuditLog({
+      action: 'LOGIN_FAILED',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      status: 'FAILED',
+      details: { email, error: error.message },
+    });
+    throw error;
+  }
 });
 
 const logout = catchAsync(async (req, res) => {
-  await authService.logout(req.body.refreshToken);
+  const { refreshToken } = req.body;
+  let userId;
+  try {
+    const Token = require('../models/token.model');
+    const { tokenTypes } = require('../config/tokens');
+    const tokenDoc = await Token.findOne({ token: refreshToken, type: tokenTypes.REFRESH, blacklisted: false });
+    if (tokenDoc) {
+      userId = tokenDoc.user;
+    }
+  } catch (err) {}
+
+  await authService.logout(refreshToken);
+
+  await auditLogService.createAuditLog({
+    action: 'LOGOUT',
+    user: userId,
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+    status: 'SUCCESS',
+  });
+
   res.status(httpStatus.NO_CONTENT).send();
 });
 

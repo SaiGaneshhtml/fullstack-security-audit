@@ -3,9 +3,30 @@ const app = require('./app');
 const config = require('./config/config');
 const logger = require('./config/logger');
 
+const User = require('./models/user.model');
 let server;
-mongoose.connect(config.mongoose.url, config.mongoose.options).then(() => {
+
+const seedAdmin = async () => {
+  try {
+    const adminExists = await User.findOne({ role: 'admin' });
+    if (!adminExists) {
+      await User.create({
+        name: 'Admin User',
+        email: 'admin@example.com',
+        password: 'Password1',
+        role: 'admin',
+        isEmailVerified: true,
+      });
+      logger.info('Seeded default admin user: admin@example.com / Password1');
+    }
+  } catch (error) {
+    logger.error('Error seeding admin user:', error);
+  }
+};
+
+mongoose.connect(config.mongoose.url, config.mongoose.options).then(async () => {
   logger.info('Connected to MongoDB');
+  await seedAdmin();
   server = app.listen(config.port, () => {
     logger.info(`Listening to port ${config.port}`);
   });

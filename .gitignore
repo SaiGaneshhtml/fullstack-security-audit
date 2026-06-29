@@ -10,3 +10,10 @@ yarn-error.log
 
 # Code coverage
 coverage
+
+# Custom Progress Tracker
+read.md
+
+# Agent Configuration / Cache
+.agents/
+.gemini/

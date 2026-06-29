@@ -1,0 +1,199 @@
+<div class="dashboard-wrapper">
+  <!-- Navbar -->
+  <nav class="navbar glass-card">
+    <div class="nav-left">
+      <span class="nav-logo">🛡️ SECURITY AUDIT ENGINE</span>
+    </div>
+    <div class="nav-right" *ngIf="currentUser">
+      <span class="operator-badge">
+        <span class="pulse-indicator"></span>
+        {{ currentUser.name }} ({{ currentUser.role }})
+      </span>
+      <button class="btn btn-secondary btn-sm" (click)="logout()">Lock Console 🔒</button>
+    </div>
+  </nav>
+
+  <!-- Content Container -->
+  <div class="dashboard-content">
+    
+    <!-- Stats Cards Grid -->
+    <div class="stats-grid">
+      <div class="stats-card glass-card border-accent">
+        <div class="stats-icon text-accent">📊</div>
+        <div class="stats-info">
+          <h3>Total Audited Events</h3>
+          <p class="stats-value">{{ totalEventsCount }}</p>
+        </div>
+      </div>
+
+      <div class="stats-card glass-card border-success">
+        <div class="stats-icon text-success">🟢</div>
+        <div class="stats-info">
+          <h3>Successful Operations</h3>
+          <p class="stats-value text-success">{{ successEventsCount }}</p>
+        </div>
+      </div>
+
+      <div class="stats-card glass-card border-danger">
+        <div class="stats-icon text-danger">🔴</div>
+        <div class="stats-info">
+          <h3>Failed Operations</h3>
+          <p class="stats-value text-danger">{{ failedEventsCount }}</p>
+        </div>
+      </div>
+
+      <div class="stats-card glass-card border-warning">
+        <div class="stats-icon text-warning">🚨</div>
+        <div class="stats-info">
+          <h3>Failed Logins Alert</h3>
+          <p class="stats-value text-warning">{{ failedLoginsCount }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters and Table Card -->
+    <div class="main-card glass-card">
+      <div class="card-header">
+        <h2>System Activity Logs</h2>
+        <button class="btn btn-secondary btn-sm" (click)="loadLogs(); loadStats()" [disabled]="loading">
+          🔄 Refresh
+        </button>
+      </div>
+
+      <!-- Filters Toolbar -->
+      <div class="toolbar">
+        <div class="filter-group">
+          <label for="action-filter">Filter by Action</label>
+          <select id="action-filter" [(ngModel)]="selectedAction" (change)="onFilterChange()">
+            <option *ngFor="let opt of actionOptions" [value]="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="status-filter">Status</label>
+          <select id="status-filter" [(ngModel)]="selectedStatus" (change)="onFilterChange()">
+            <option value="">All Statuses</option>
+            <option value="SUCCESS">SUCCESS</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="sort-filter">Sort Order</label>
+          <select id="sort-filter" [(ngModel)]="sortBy" (change)="onFilterChange()">
+            <option value="createdAt:desc">Newest First</option>
+            <option value="createdAt:asc">Oldest First</option>
+            <option value="action:asc">Action (A-Z)</option>
+            <option value="action:desc">Action (Z-A)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Logs Table -->
+      <div class="table-container">
+        <div class="loading-overlay" *ngIf="loading">
+          <span class="spinner"></span>
+          <p>Querying security records...</p>
+        </div>
+
+        <table class="logs-table" *ngIf="!loading && logs.length > 0">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Action</th>
+              <th>Operator</th>
+              <th>IP Address</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let log of logs">
+              <td class="timestamp-col">{{ formatDate(log.createdAt) }}</td>
+              <td>
+                <span class="action-name">{{ log.action }}</span>
+              </td>
+              <td>
+                <div class="operator-info">
+                  <span class="name">{{ log.user ? log.user.name : 'System/Guest' }}</span>
+                  <span class="email" *ngIf="log.user">{{ log.user.email }}</span>
+                </div>
+              </td>
+              <td class="code-font">{{ log.ipAddress || 'Unknown' }}</td>
+              <td>
+                <span class="badge" [ngClass]="{
+                  'badge-success': log.status === 'SUCCESS',
+                  'badge-danger': log.status === 'FAILED'
+                }">{{ log.status }}</span>
+              </td>
+              <td>
+                <button class="btn btn-secondary btn-xs" (click)="viewDetails(log)">Inspect</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Empty State -->
+        <div class="empty-state" *ngIf="!loading && logs.length === 0">
+          <div class="empty-icon">🛡️</div>
+          <h3>No audit logs match these filter criteria</h3>
+          <p>Change your selections or trigger new API events on the server.</p>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div class="card-footer" *ngIf="logs.length > 0">
+        <div class="page-info">
+          Showing logs {{ (page - 1) * limit + 1 }} to {{ page * limit > totalResults ? totalResults : page * limit }} of {{ totalResults }}
+        </div>
+        <div class="pagination-controls">
+          <button class="btn btn-secondary btn-xs" (click)="changePage(page - 1)" [disabled]="page === 1">◀ Prev</button>
+          <span class="page-number">Page {{ page }} of {{ totalPages }}</span>
+          <button class="btn btn-secondary btn-xs" (click)="changePage(page + 1)" [disabled]="page === totalPages">Next ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Inspection Modal -->
+  <div class="modal-backdrop" *ngIf="selectedLog">
+    <div class="modal glass-card">
+      <div class="modal-header">
+        <h3>Audit Log Inspection</h3>
+        <button class="close-btn" (click)="closeModal()">✖</button>
+      </div>
+      <div class="modal-body">
+        <div class="meta-row">
+          <strong>Event ID:</strong> <span class="code-font">{{ selectedLog.id }}</span>
+        </div>
+        <div class="meta-row">
+          <strong>Timestamp:</strong> <span>{{ formatDate(selectedLog.createdAt) }}</span>
+        </div>
+        <div class="meta-row">
+          <strong>Action Type:</strong> <span class="action-name">{{ selectedLog.action }}</span>
+        </div>
+        <div class="meta-row">
+          <strong>Status:</strong>
+          <span class="badge" [ngClass]="{
+            'badge-success': selectedLog.status === 'SUCCESS',
+            'badge-danger': selectedLog.status === 'FAILED'
+          }">{{ selectedLog.status }}</span>
+        </div>
+        <div class="meta-row">
+          <strong>IP Address:</strong> <span class="code-font">{{ selectedLog.ipAddress || 'N/A' }}</span>
+        </div>
+        <div class="meta-row">
+          <strong>User Agent:</strong> <span class="ua-text">{{ selectedLog.userAgent || 'N/A' }}</span>
+        </div>
+
+        <div class="details-section">
+          <strong>Security Metadata (JSON):</strong>
+          <pre class="json-code">{{ getJsonDetails(selectedLog.details) }}</pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeModal()">Close Inspection</button>
+      </div>
+    </div>
+  </div>
+</div>
